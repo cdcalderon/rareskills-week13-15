@@ -61,7 +61,63 @@ object "YULRC1155" {
             case 0x00fdd58e {
                 returnUint(balanceOf(decodeAsAddress(0), decodeAsUint(1)))
             }
-            
+             // uri(uint256)
+            case 0x0e89341c {
+                uri(0) // Token id isn't used so don't bother decoding it
+            }
+            // balanceOfBatch(address[],uint256[])
+            case 0x4e1273f4 {
+                returnArray(balanceOfBatch(decodeAsAddressArray(0), decodeAsUintArray(1)))
+            }
+            // setApprovalForAll(address,bool)
+            case 0xa22cb465 {
+                setApprovalForAll(decodeAsAddress(0), decodeAsBool(1))
+            }
+            // isApprovedForAll(address,address)
+            case 0xe985e9c5 {
+                returnBool(isApprovedForAll(decodeAsAddress(0), decodeAsAddress(1)))
+            }
+            // safeTransferFrom(address,address,uint256,uint256,bytes)
+            case 0xf242432a {
+                safeTransferFrom(
+                    decodeAsAddress(0), 
+                    decodeAsAddress(1), 
+                    decodeAsUint(2), 
+                    decodeAsUint(3), 
+                    decodeAsBytes(4)
+                )
+            }
+            // safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)
+            case 0x2eb2c2d6 {
+                safeBatchTransferFrom(
+                    decodeAsAddress(0), 
+                    decodeAsAddress(1), 
+                    decodeAsUintArray(2), 
+                    decodeAsUintArray(3), 
+                    decodeAsBytes(4)
+                )
+            }
+            // mint(address,uint256,uint256,bytes)
+            case 0x731133e9 {
+                mint(decodeAsAddress(0), decodeAsUint(1), decodeAsUint(2), decodeAsBytes(3))
+            }
+            // mintBatch(address,uint256[],uint256[],bytes)
+            case 0x1f7fdffa {
+                mintBatch(
+                    decodeAsAddress(0), 
+                    decodeAsUintArray(1), 
+                    decodeAsUintArray(2), 
+                    decodeAsBytes(3)
+                )
+            }
+            // burn(address,uint256,uint256)
+            case 0xf5298aca {
+                burn(decodeAsAddress(0), decodeAsUint(1), decodeAsUint(2))
+            }
+            // burnBatch(address,uint256[],uint256[])
+            case 0x6b20c454 {
+                burnBatch(decodeAsAddress(0), decodeAsUintArray(1), decodeAsUintArray(2))
+            }
             default {
                 revert(0, 0)
             }
@@ -131,7 +187,29 @@ object "YULRC1155" {
              * @param id The id of the token.
              */
             function uri(id) {
-                
+                // Load the length of the URI from storage.
+                let uriLength := sload(sUriLengthSlot())
+
+                // Store the offset of the URI string within the response.
+                // The offset is always 32 bytes because the first 32 bytes of the response are reserved for the string length.
+                mstore(0x00, 0x20)
+
+                // Store the length of the URI string.
+                mstore(0x20, uriLength)
+
+                // Store the URI string data.
+                // The URI string data is stored in storage after the URI length.
+                // The URI string data is copied into memory after the URI string length.
+                for { let i := 1 } lt(i, add(2, div(uriLength, 0x20))) { i := add(i, 1) }
+                {
+                    let dataSlot := add(sUriLengthSlot(), i)
+                    let uriData := sload(dataSlot)
+
+                    mstore(add(0x20, mul(i, 0x20)), uriData)
+                }
+
+                // Return the URI string offset, length, and data.
+                return(0x00, add(0x40, mul(uriLength, 0x20)))
             }
             
             /**
@@ -164,7 +242,6 @@ object "YULRC1155" {
              */
 
             function balanceOfBatch(mAccountsArrayLengthPointer, mIdsArrayLengthPointer) -> mBalancesArrayLengthPointer {
-               
             }
 
             /**
@@ -320,7 +397,7 @@ object "YULRC1155" {
              * @param data Additional data to pass to the `onERC1155Received` function.
              */
             function callOnERC1155Received(from, to, id, amount, data) {
-                
+               
             }
 
             /**

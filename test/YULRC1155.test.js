@@ -181,4 +181,22 @@ describe("YULRC1155", function () {
       ).to.equal(mintAmount);
     });
   });
+
+  /**
+   * URI(uint256)
+   *
+   * it:
+   * - should set the initial URI for all token types
+   */
+  describe("uri", function () {
+    const tokenIdOne = 1001;
+    const tokenIdTwo = 2002;
+
+    it("should set the initial URI for all token types", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+
+      expect(await yulrc1155Contract.uri(tokenIdOne)).to.be.equal(URI);
+      expect(await yulrc1155Contract.uri(tokenIdTwo)).to.be.equal(URI);
+    });
+  });
 });
