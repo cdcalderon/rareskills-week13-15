@@ -207,6 +207,12 @@ object "YULRC1155" {
                 // In memory, the data is placed in a location determined by add(0x20, mul(i, 0x20)), 
                 // which ensures the data comes after the memory slot where the URI's length is saved. 
                 // With each iteration, i increases by 1, moving the index to the next storage slot and corresponding memory location.
+
+                // div(uriLength, 0x20): This divides the length of the URI string by 32 (0x20 in hexadecimal). 
+                // Each storage slot in Ethereum can hold 32 bytes of data, so this calculates how many storage slots are needed to store the URI string.
+                // add(2, div(uriLength, 0x20)): This adds 2 to the result of the division. 
+                // The reason for adding 2 is that the first storage slot is reserved for storing the length of the URI string, 
+                // and i is initialized to 1, so adding 2 aligns the loop with these offsets.
                 for { let i := 1 } lt(i, add(2, div(uriLength, 0x20))) { i := add(i, 1) }
                 {
                     let dataSlot := add(sUriLengthSlot(), i) // This points to the location in storage where the current part of the URI string is stored.
@@ -246,9 +252,43 @@ object "YULRC1155" {
              * @param mAccountsArrayLengthPointer A pointer to the length of the accounts array in memory.
              * @param mIdsArrayLengthPointer A pointer to the length of the ids array in memory.
              * @return mBalancesArrayLengthPointer A pointer to the balances array in memory.
+             * The function returns the balances of the given accounts for the corresponding token IDs. 
+             * The balances are returned as an array in memory. 
+             * The function returns a pointer to the start of this balances array (mBalancesArrayLengthPointer).
              */
 
             function balanceOfBatch(mAccountsArrayLengthPointer, mIdsArrayLengthPointer) -> mBalancesArrayLengthPointer {
+                // Load the lengths of the accounts and ids arrays from memory.
+                let accountsArrayLength := mload(mAccountsArrayLengthPointer)
+                let idsArrayLength := mload(mIdsArrayLengthPointer)
+
+                // Check that the lengths of the accounts and ids arrays are equal.
+                // If the lengths are not equal, this function will revert the transaction.
+                requireEqual(accountsArrayLength, idsArrayLength)
+
+                // Get the current free memory pointer. This is where we'll store the balances array.
+                let mFreeMemoryPointer := mload(0x00)
+                let mBalancesArrayLengthPointer_ := mFreeMemoryPointer
+
+                // Store the length of the balances array in memory.
+                mStoreWordAndUpdateFreeMemoryPointer(mBalancesArrayLengthPointer_, accountsArrayLength)
+
+                // For each account, load its token id balance into balances array
+                // i is less than accountsArrayLength + 1
+                for { let i := 1 } lt(i, add(accountsArrayLength, 1)) { i := add(i, 1) }
+                {
+                    // Get account and id at this index position
+                    let account := mload(add(mAccountsArrayLengthPointer, mul(i, 0x20)))
+                    requireValidAddress(account)
+                    let id := mload(add(mIdsArrayLengthPointer, mul(i, 0x20)))
+
+                    // Get account balance
+                    let accountBalance := balanceOf(account, id)
+
+                    mStoreWordAndUpdateFreeMemoryPointer(mload(0x00), accountBalance)
+                }
+
+                mBalancesArrayLengthPointer := mBalancesArrayLengthPointer_
             }
 
             /**
@@ -856,6 +896,8 @@ object "YULRC1155" {
              * @param address_ The address to check.
              */
             function requireValidAddress(address_) {
+                // Checks if a given Ethereum address is valid or not.
+                // If the address is longer than 20 bytes (160 bits), it's considered invalid and the transaction is reverted.
                 if iszero(iszero(and(address_, not(0xffffffffffffffffffffffffffffffffffffffff)))) {
                     revert(0, 0)
                 }
