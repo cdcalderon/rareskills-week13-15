@@ -200,9 +200,16 @@ object "YULRC1155" {
                 // Store the URI string data.
                 // The URI string data is stored in storage after the URI length.
                 // The URI string data is copied into memory after the URI string length.
+                
+                // The loop uses an index i to navigate through storage slots and memory locations. 
+                // Starting at 1, i points to the storage slot following the one that holds the URI length. 
+                // The URI data is read from this storage slot and written into memory. 
+                // In memory, the data is placed in a location determined by add(0x20, mul(i, 0x20)), 
+                // which ensures the data comes after the memory slot where the URI's length is saved. 
+                // With each iteration, i increases by 1, moving the index to the next storage slot and corresponding memory location.
                 for { let i := 1 } lt(i, add(2, div(uriLength, 0x20))) { i := add(i, 1) }
                 {
-                    let dataSlot := add(sUriLengthSlot(), i)
+                    let dataSlot := add(sUriLengthSlot(), i) // This points to the location in storage where the current part of the URI string is stored.
                     let uriData := sload(dataSlot)
 
                     mstore(add(0x20, mul(i, 0x20)), uriData)
