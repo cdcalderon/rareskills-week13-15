@@ -421,6 +421,49 @@ object "YULRC1155" {
                 mAmountsArrayLengthPointer, 
                 data
             ) {
+                 // Load the lengths of the ids and amounts arrays from memory.
+                let idsArrayLength := mload(mIdsArrayLengthPointer)
+                let amountsArrayLength := mload(mAmountsArrayLengthPointer)
+
+                // Check that the lengths of the ids and amounts arrays are equal.
+                // If the lengths are not equal, this function will revert the transaction.
+                requireEqual(idsArrayLength, amountsArrayLength)
+
+                // For each token id, transfer the corresponding amount to the `to` account.
+                for { let i := 1 } lt(i, add(idsArrayLength, 1)) { i := add(i, 1) }
+                {
+                    // Load the token id and amount from memory.
+                    let id := mload(add(mIdsArrayLengthPointer, mul(i, 0x20)))
+                    let amount := mload(add(mAmountsArrayLengthPointer, mul(i, 0x20)))
+
+                    // Transfer the token from the `from` account to the `to` account.
+                    // This function will revert the transaction if the transfer is not valid.
+                    _transfer(from, to, id, amount)
+                }
+
+                // Check if the `to` address is a contract.
+                if isAddressContract(to) {
+                    // If the `to` address is a contract, call its `onERC1155BatchReceived` function.
+                    // This function allows the contract to react to the receipt of the tokens.
+                    // If the `onERC1155BatchReceived` function reverts or does not return the correct value, this function will revert the transaction.
+                    callOnERC1155BatchReceived(
+                        from, 
+                        to, 
+                        mIdsArrayLengthPointer, 
+                        mAmountsArrayLengthPointer, 
+                        data
+                    )
+                }
+
+                // Emit a `TransferBatch` event.
+                // This event allows off-chain services to track the transfer of the tokens.
+                emitTransferBatch(
+                    caller(), 
+                    from, 
+                    to, 
+                    mIdsArrayLengthPointer,
+                    mAmountsArrayLengthPointer 
+                )
             }
 
             /**

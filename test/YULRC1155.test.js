@@ -762,4 +762,482 @@ describe("YULRC1155", function () {
         );
     });
   });
+
+  /**
+   * Testing safeBatchTransferFrom function with the following conditions:
+   *
+   * - Should revert if the transferred amount exceeds any of the available balances.
+   * - Should revert if the length of the ids array does not match the length of the amounts array.
+   * - Should revert if the transfer is being made to the zero address.
+   * - Should revert if the operator is not approved by the multiTokenHolder.
+   * - Should revert if the receiver contract returns an unexpected value.
+   * - Should revert if the receiver contract reverts.
+   * - Should revert if the receiver does not implement the required function.
+   * - Should debit the transferred balances from the sender.
+   * - Should credit the transferred balances to the receiver.
+   * - Should succeed if the operator is approved by the multiTokenHolder.
+   * - Should preserve the balances of the operator not involved in the transfer.
+   * - Should succeed when onERC1155Received is called without data.
+   * - Should succeed when onERC1155Received is called with data.
+   * - Should succeed when calling a receiver contract that only reverts on single transfers.
+   * - Should emit a TransferBatch log after a successful operation.
+   */
+  describe("safeBatchTransferFrom", function () {
+    const tokenBatchIds = [2000, 2010, 2020];
+    const mintAmounts = [5000, 10000, 42195];
+
+    it("should revert when the lengths of IDs array and amounts array do not match", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      await expect(
+        yulrc1155Contract.connect(tokenBatchHolder).safeBatchTransferFrom(
+          tokenBatchHolder.address,
+          tokenReceiver.address,
+          tokenBatchIds,
+          // 10001 = 1 more than minted amount
+          [5000, 10001, 42195],
+          DATA
+        )
+      ).to.be.reverted;
+    });
+
+    it("should revert when the lengths of IDs array and amounts array do not match", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenBatchHolder)
+          .safeBatchTransferFrom(
+            tokenBatchHolder.address,
+            tokenReceiver.address,
+            tokenBatchIds.slice(1),
+            mintAmounts,
+            DATA
+          )
+      ).to.be.reverted;
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenBatchHolder)
+          .safeBatchTransferFrom(
+            tokenBatchHolder.address,
+            tokenReceiver.address,
+            tokenBatchIds,
+            mintAmounts.slice(1),
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should revert when attempting to transfer to the zero address", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenBatchHolder)
+          .safeBatchTransferFrom(
+            tokenBatchHolder.address,
+            ZERO_ADDRESS,
+            tokenBatchIds,
+            mintAmounts,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should revert when attempting to transfer without operator approval", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder, operator, tokenReceiver] =
+        await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(operator)
+          .safeBatchTransferFrom(
+            tokenBatchHolder.address,
+            tokenReceiver.address,
+            tokenBatchIds,
+            mintAmounts,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should revert when attempting to transfer to a contract that returns an unexpected value", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { unexpectedValueContract } = await loadFixture(
+        deployUnexpectedValueFixtureTwo
+      );
+      const [_, tokenBatchHolder] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenBatchHolder)
+          .safeBatchTransferFrom(
+            tokenBatchHolder.address,
+            unexpectedValueContract.address,
+            tokenBatchIds,
+            mintAmounts,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should revert when attempting to transfer to a contract that reverts", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { receiverRevertsContract } = await loadFixture(
+        deployReceiverRevertsFixtureTwo
+      );
+      const [_, tokenBatchHolder] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenBatchHolder)
+          .safeBatchTransferFrom(
+            tokenBatchHolder.address,
+            receiverRevertsContract.address,
+            tokenBatchIds,
+            mintAmounts,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should revert when attempting to transfer to a contract that does not implement the required function", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { missingFunctionContract } = await loadFixture(
+        deployMissingFunctionFixtureTwo
+      );
+      const [_, tokenBatchHolder] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenBatchHolder)
+          .safeBatchTransferFrom(
+            tokenBatchHolder.address,
+            missingFunctionContract.address,
+            tokenBatchIds,
+            mintAmounts,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should decrease the sender's balance by the amount of tokens transferred", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      const transferBatchTx = await yulrc1155Contract
+        .connect(tokenBatchHolder)
+        .safeBatchTransferFrom(
+          tokenBatchHolder.address,
+          tokenReceiver.address,
+          tokenBatchIds,
+          mintAmounts,
+          DATA
+        );
+      await transferBatchTx.wait(1);
+
+      const holderBatchBalances = await yulrc1155Contract.balanceOfBatch(
+        new Array(tokenBatchIds.length).fill(tokenBatchHolder.address),
+        tokenBatchIds
+      );
+
+      for (let i = 0; i < holderBatchBalances.length; i++) {
+        expect(holderBatchBalances[i]).to.be.bignumber.equal(0);
+      }
+    });
+
+    it("should increase the receiver's balance by the amount of tokens transferred", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      const transferBatchTx = await yulrc1155Contract
+        .connect(tokenBatchHolder)
+        .safeBatchTransferFrom(
+          tokenBatchHolder.address,
+          tokenReceiver.address,
+          tokenBatchIds,
+          mintAmounts,
+          DATA
+        );
+      await transferBatchTx.wait(1);
+
+      const holderBatchBalances = await yulrc1155Contract.balanceOfBatch(
+        new Array(tokenBatchIds.length).fill(tokenReceiver.address),
+        tokenBatchIds
+      );
+
+      for (let i = 0; i < holderBatchBalances.length; i++) {
+        expect(holderBatchBalances[i]).to.be.bignumber.equal(mintAmounts[i]);
+      }
+    });
+
+    it("should successfully transfer when operator has approval", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder, operator, tokenReceiver] =
+        await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      const setApprovalForAllTx = await yulrc1155Contract
+        .connect(tokenBatchHolder)
+        .setApprovalForAll(operator.address, true);
+      await setApprovalForAllTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(operator)
+          .safeBatchTransferFrom(
+            tokenBatchHolder.address,
+            tokenReceiver.address,
+            tokenBatchIds,
+            mintAmounts,
+            DATA
+          )
+      ).to.not.be.reverted;
+    });
+
+    it("should keep the balances of tokens not involved in the transfer unchanged", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder, operator, tokenReceiver] =
+        await ethers.getSigners();
+
+      const mintBatchToTokenHolderTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchToTokenHolderTx.wait(1);
+
+      const mintBatchToOperatorTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchToOperatorTx.wait(1);
+
+      const setApprovalForAllTx = await yulrc1155Contract
+        .connect(tokenBatchHolder)
+        .setApprovalForAll(operator.address, true);
+      await setApprovalForAllTx.wait(1);
+
+      const safeBatchTransferFromTx = await yulrc1155Contract
+        .connect(operator)
+        .safeBatchTransferFrom(
+          tokenBatchHolder.address,
+          tokenReceiver.address,
+          tokenBatchIds,
+          mintAmounts,
+          DATA
+        );
+      await safeBatchTransferFromTx.wait(1);
+
+      const operatorBalances = await yulrc1155Contract.balanceOfBatch(
+        new Array(tokenBatchIds.length).fill(operator.address),
+        tokenBatchIds
+      );
+
+      for (let i = 0; i < operatorBalances.length; i++) {
+        expect(operatorBalances[i]).to.be.bignumber.equal(mintAmounts[i]);
+      }
+    });
+
+    it("should successfully call onERC1155Received without data", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { erc1155ReceiverContract } = await loadFixture(
+        deployERC1155ReceiverFixtureThree
+      );
+      const [_, tokenBatchHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      const transferBatchTx = await yulrc1155Contract
+        .connect(tokenBatchHolder)
+        .safeBatchTransferFrom(
+          tokenBatchHolder.address,
+          erc1155ReceiverContract.address,
+          tokenBatchIds,
+          mintAmounts,
+          "0x00"
+        );
+      await transferBatchTx.wait(1);
+    });
+
+    it("should successfully call onERC1155Received with data", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { erc1155ReceiverContract } = await loadFixture(
+        deployERC1155ReceiverFixtureFour
+      );
+      const [_, tokenBatchHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      const transferBatchTx = await yulrc1155Contract
+        .connect(tokenBatchHolder)
+        .safeBatchTransferFrom(
+          tokenBatchHolder.address,
+          erc1155ReceiverContract.address,
+          tokenBatchIds,
+          mintAmounts,
+          DATA
+        );
+      await transferBatchTx.wait(1);
+    });
+
+    it("should successfully transfer when the receiver contract reverts only on single transfers", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { revertsOnSingleTransfersContract } = await loadFixture(
+        deployRevertsOnSingleTransfers
+      );
+      const [_, tokenBatchHolder] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      const transferBatchTx = await yulrc1155Contract
+        .connect(tokenBatchHolder)
+        .safeBatchTransferFrom(
+          tokenBatchHolder.address,
+          revertsOnSingleTransfersContract.address,
+          tokenBatchIds,
+          mintAmounts,
+          DATA
+        );
+      await transferBatchTx.wait(1);
+    });
+
+    it("should emit a TransferBatch event on successful transfer", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        tokenBatchIds,
+        mintAmounts,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      await expect(
+        await yulrc1155Contract
+          .connect(tokenBatchHolder)
+          .safeBatchTransferFrom(
+            tokenBatchHolder.address,
+            tokenReceiver.address,
+            tokenBatchIds,
+            mintAmounts,
+            DATA
+          )
+      )
+        .to.emit(yulrc1155Contract, "TransferBatch")
+        .withArgs(
+          tokenBatchHolder.address,
+          tokenBatchHolder.address,
+          tokenReceiver.address,
+          tokenBatchIds,
+          mintAmounts
+        );
+    });
+  });
 });
