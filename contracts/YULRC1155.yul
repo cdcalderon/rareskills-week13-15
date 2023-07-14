@@ -322,6 +322,11 @@ object "YULRC1155" {
              * @return isApproved Whether the operator is approved.
              */
             function isApprovedForAll(account, operator) -> isApproved {
+                 // Calculate the storage key for the operator approval.
+                let sOperatorApprovalKey := sGenerateOperatorApprovalKey(account, operator)
+
+                // Load the approval from storage.
+                isApproved := sload(sOperatorApprovalKey)
             }
 
             /**
