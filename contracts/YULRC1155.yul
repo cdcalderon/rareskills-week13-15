@@ -475,6 +475,18 @@ object "YULRC1155" {
              * @param amount The amount of the token to mint.
              */
             function _mint(to, id, amount) {
+                 // Check that the `to` address is not the zero address.
+                // If the `to` address is the zero address, this function will revert the transaction.
+                requireNonZeroAddress(to)
+
+                // Calculate the storage key for the balance of the `to` account for the token.
+                let sAccountBalanceKey := sGenerateBalanceKey(to, id)
+                
+                // Load the balance of the `to` account for the token from storage.
+                let accountBalance := sload(sAccountBalanceKey)
+
+                // Increment the balance of the `to` account for the token by the amount of the mint.
+                sstore(sAccountBalanceKey, add(accountBalance, amount))
             }
 
             /**
@@ -487,6 +499,13 @@ object "YULRC1155" {
              * @param data Additional data to include in the `TransferSingle` event.
              */
             function mint(to, id, amount, data) {
+                // Mint the token for the `to` account.
+                // This function will revert the transaction if the mint is not valid.
+                _mint(to, id, amount)
+
+                // Emit a `TransferSingle` event.
+                // This event allows off-chain services to track the mint of the token.
+                emitTransferSingle(caller(), 0x00, to, id, amount)
             }
 
             /**
@@ -504,6 +523,35 @@ object "YULRC1155" {
                 mAmountsArrayLengthPointer,
                 data
             ) {
+                // Load the lengths of the ids and amounts arrays from memory.
+                let idsArrayLength := mload(mIdsArrayLengthPointer)
+                let amountsArrayLength := mload(mAmountsArrayLengthPointer)
+
+                // Check that the lengths of the ids and amounts arrays are equal.
+                // If the lengths are not equal, this function will revert the transaction.
+                requireEqual(idsArrayLength, amountsArrayLength)
+
+                // For each token id, mint the corresponding amount to the `to` account.
+                for { let i := 1 } lt(i, add(idsArrayLength, 1)) { i := add(i, 1) }
+                {
+                    // Load the token id and amount from memory.
+                    let id := mload(add(mIdsArrayLengthPointer, mul(i, 0x20)))
+                    let amount := mload(add(mAmountsArrayLengthPointer, mul(i, 0x20)))
+
+                    // Mint the token for the `to` account.
+                    // This function will revert the transaction if the mint is not valid.
+                    _mint(toAccount, id, amount)
+                }
+
+                // Emit a `TransferBatch` event.
+                // This event allows off-chain services to track the mint of the tokens.
+                emitTransferBatch(
+                    caller(), 
+                    0x00, 
+                    toAccount, 
+                    mIdsArrayLengthPointer, 
+                    mAmountsArrayLengthPointer
+                )
             }
 
             /**

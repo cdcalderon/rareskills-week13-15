@@ -1240,4 +1240,165 @@ describe("YULRC1155", function () {
         );
     });
   });
+
+  /**
+   * mint(address to, uint256 id, uint256 amount, bytes data)
+   *
+   * it:
+   * - reverts with a zero destination address
+   * - credits the minted amount of tokens
+   * - emits a TransferSingle event
+   */
+  describe("mint", function () {
+    const TEST_TOKEN_ID = 1990;
+    const TEST_TOKEN_QUANTITY = 9001;
+
+    it("should throw an error if the recipient's address is zero", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+
+      await expect(
+        yulrc1155Contract.mint(
+          ZERO_ADDRESS,
+          TEST_TOKEN_ID,
+          TEST_TOKEN_QUANTITY,
+          DATA
+        )
+      ).to.be.reverted;
+    });
+
+    it("should emit a 'TransferSingle' event after a successful minting operation", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        TEST_TOKEN_ID,
+        TEST_TOKEN_QUANTITY,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      expect(
+        await yulrc1155Contract.balanceOf(tokenHolder.address, TEST_TOKEN_ID)
+      ).to.equal(TEST_TOKEN_QUANTITY);
+    });
+
+    it("emits a TransferSingle event", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [operator, tokenHolder] = await ethers.getSigners();
+
+      await expect(
+        await yulrc1155Contract.mint(
+          tokenHolder.address,
+          TEST_TOKEN_ID,
+          TEST_TOKEN_QUANTITY,
+          DATA
+        )
+      )
+        .to.emit(yulrc1155Contract, "TransferSingle")
+        .withArgs(
+          operator.address,
+          ZERO_ADDRESS,
+          tokenHolder.address,
+          TEST_TOKEN_ID,
+          TEST_TOKEN_QUANTITY
+        );
+    });
+  });
+
+  /**
+   * mintBatch(address recipient, uint256[] ids, uint256[] quantities, bytes data)
+   *
+   * Test cases:
+   * - it should throw an error if the recipient's address is zero
+   * - it should throw an error if the length of token ids and quantities don't match
+   * - it should correctly credit the newly minted tokens to the recipient's account
+   * - it should emit a 'TransferBatch' event after a successful minting operation
+   */
+  describe("mintBatch", function () {
+    const TEST_TOKEN_IDS = [2000, 2010, 2020];
+    const TEST_TOKEN_QUANTITIES = [5000, 10000, 42195];
+
+    it("should throw an error if the recipient's address is zero", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+
+      await expect(
+        yulrc1155Contract.mintBatch(
+          ZERO_ADDRESS,
+          TEST_TOKEN_IDS,
+          TEST_TOKEN_QUANTITIES,
+          DATA
+        )
+      ).to.be.reverted;
+    });
+
+    it("should throw an error if the length of token ids and quantities don't match", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder] = await ethers.getSigners();
+
+      await expect(
+        yulrc1155Contract.mintBatch(
+          tokenBatchHolder.address,
+          TEST_TOKEN_IDS,
+          TEST_TOKEN_QUANTITIES.slice(1),
+          DATA
+        )
+      ).to.be.reverted;
+
+      await expect(
+        yulrc1155Contract.mintBatch(
+          tokenBatchHolder.address,
+          TEST_TOKEN_IDS.slice(1),
+          TEST_TOKEN_QUANTITIES,
+          DATA
+        )
+      ).to.be.reverted;
+    });
+
+    it("should correctly credit the newly minted tokens to the recipient's account", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        TEST_TOKEN_IDS,
+        TEST_TOKEN_QUANTITIES,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      const holderBatchBalances = await yulrc1155Contract.balanceOfBatch(
+        new Array(TEST_TOKEN_IDS.length).fill(tokenBatchHolder.address),
+        TEST_TOKEN_IDS
+      );
+
+      for (let i = 0; i < holderBatchBalances.length; i++) {
+        expect(holderBatchBalances[i]).to.be.bignumber.equal(
+          TEST_TOKEN_QUANTITIES[i]
+        );
+      }
+    });
+
+    it("should emit a 'TransferBatch' event after a successful minting operation", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [operator, tokenBatchHolder] = await ethers.getSigners();
+
+      await expect(
+        await yulrc1155Contract.mintBatch(
+          tokenBatchHolder.address,
+          TEST_TOKEN_IDS,
+          TEST_TOKEN_QUANTITIES,
+          DATA
+        )
+      )
+        .to.emit(yulrc1155Contract, "TransferBatch")
+        .withArgs(
+          operator.address,
+          ZERO_ADDRESS,
+          tokenBatchHolder.address,
+          TEST_TOKEN_IDS,
+          TEST_TOKEN_QUANTITIES
+        );
+    });
+  });
 });
