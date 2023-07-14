@@ -199,4 +199,100 @@ describe("YULRC1155", function () {
       expect(await yulrc1155Contract.uri(tokenIdTwo)).to.be.equal(URI);
     });
   });
+
+  /**
+   * setApprovalForAll(address operator, bool approved)
+   * isApprovedForAll(address account, address operator)
+   *
+   * it:
+   * - should revert if attempting to approve self as an operator
+   * - should set approval status which can be queried via isApprovedForAll
+   * - should be able to unset approval for an operator
+   * - should emit an ApprovalForAll log
+   */
+  describe("setApprovalForAll/isApprovedForAll", function () {
+    it("should revert if attempting to approve self as an operator", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, approver] = await ethers.getSigners();
+
+      await expect(
+        yulrc1155Contract
+          .connect(approver)
+          .setApprovalForAll(approver.address, true)
+      ).to.be.reverted;
+    });
+
+    it("should set approval status which can be queried via isApprovedForAll", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, approver, operator] = await ethers.getSigners();
+
+      // Confirm operator is not yet approved
+      expect(
+        await yulrc1155Contract.isApprovedForAll(
+          approver.address,
+          operator.address
+        )
+      ).to.equal(false);
+
+      // Approve operator
+      const setApprovalForAllTx = await yulrc1155Contract
+        .connect(approver)
+        .setApprovalForAll(operator.address, true);
+      await setApprovalForAllTx.wait(1);
+
+      // Confirm operator is now approved
+      expect(
+        await yulrc1155Contract.isApprovedForAll(
+          approver.address,
+          operator.address
+        )
+      ).to.equal(true);
+    });
+
+    it("should be able to unset approval for an operator", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, approver, operator] = await ethers.getSigners();
+
+      // Approve operator
+      const setApprovalForAllTrueTx = await yulrc1155Contract
+        .connect(approver)
+        .setApprovalForAll(operator.address, true);
+      await setApprovalForAllTrueTx.wait(1);
+
+      // Confirm operator is now approved
+      expect(
+        await yulrc1155Contract.isApprovedForAll(
+          approver.address,
+          operator.address
+        )
+      ).to.equal(true);
+
+      // Disapprove operator
+      const setApprovalForAllFalseTx = await yulrc1155Contract
+        .connect(approver)
+        .setApprovalForAll(operator.address, false);
+      await setApprovalForAllFalseTx.wait(1);
+
+      // Confirm operator is now disapproved
+      expect(
+        await yulrc1155Contract.isApprovedForAll(
+          approver.address,
+          operator.address
+        )
+      ).to.equal(false);
+    });
+
+    it("should emit an ApprovalForAll log", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, approver, operator] = await ethers.getSigners();
+
+      await expect(
+        await yulrc1155Contract
+          .connect(approver)
+          .setApprovalForAll(operator.address, true)
+      )
+        .to.emit(yulrc1155Contract, "ApprovalForAll")
+        .withArgs(approver.address, operator.address, true);
+    });
+  });
 });

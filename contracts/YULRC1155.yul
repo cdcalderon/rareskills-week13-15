@@ -299,6 +299,18 @@ object "YULRC1155" {
              * @param approved Whether the operator is approved.
              */
             function setApprovalForAll(operator, approved) {
+                // Check that the caller is not the same as the operator.
+                // If the caller is the same as the operator, this function will revert the transaction.
+                requireNotEqual(caller(), operator)
+
+                // Calculate the storage key for the operator approval.
+                let sOperatorApprovalKey := sGenerateOperatorApprovalKey(caller(), operator)
+
+                // Store the approval in storage.
+                sstore(sOperatorApprovalKey, approved)
+
+                // Emit an ApprovalForAll event.
+                emitApprovalForAll(caller(), operator, approved)
             }
 
             /**
