@@ -339,6 +339,38 @@ object "YULRC1155" {
              * @param amount The amount of the token to transfer.
              */
             function _transfer(from, to, id, amount) {
+                  // Check that the `to` address is not the zero address.
+                // If the `to` address is the zero address, this function will revert the transaction.
+                requireNonZeroAddress(to)
+
+                // Check that the `from` address is the same as the caller of the contract.
+                // If the `from` address is not the same as the caller, this function will check if the caller is an approved operator for the `from` address.
+                // If the caller is not an approved operator for the `from` address, this function will revert the transaction.
+                if iszero(eq(from, caller())) {
+                    requireOperatorApproved(from, caller())
+                }
+
+                // Calculate the storage key for the balance of the `from` account for the token.
+                let sFromAccountBalanceKey := sGenerateBalanceKey(from, id)
+                
+                // Load the balance of the `from` account for the token from storage.
+                let fromAccountBalance := sload(sFromAccountBalanceKey)
+                
+                // Check that the balance of the `from` account for the token is sufficient for the transfer.
+                // If the balance is insufficient, this function will revert the transaction.
+                requireSufficientBalance(fromAccountBalance, amount)
+
+                // Decrement the balance of the `from` account for the token by the amount of the transfer.
+                sstore(sFromAccountBalanceKey, sub(fromAccountBalance, amount))
+
+                // Calculate the storage key for the balance of the `to` account for the token.
+                let sToAccountBalanceKey := sGenerateBalanceKey(to, id)
+                
+                // Load the balance of the `to` account for the token from storage.
+                let toAccountBalance := sload(sToAccountBalanceKey)
+
+                // Increment the balance of the `to` account for the token by the amount of the transfer.
+                sstore(sToAccountBalanceKey, add(toAccountBalance, amount))
             }
 
 
@@ -354,6 +386,21 @@ object "YULRC1155" {
              * @param data Additional data to pass to the `onERC1155Received` function if the recipient is a contract.
              */
             function safeTransferFrom(from, to, id, amount, data) {
+                // Transfer the token from the `from` account to the `to` account.
+                // This function will revert the transaction if the transfer is not valid.
+                _transfer(from, to, id, amount)
+                
+                // Check if the `to` address is a contract.
+                if isAddressContract(to) {
+                    // If the `to` address is a contract, call its `onERC1155Received` function.
+                    // This function allows the contract to react to the receipt of the token.
+                    // If the `onERC1155Received` function reverts or does not return the correct value, this function will revert the transaction.
+                    callOnERC1155Received(from, to, id, amount, data)
+                }
+
+                // Emit a `TransferSingle` event.
+                // This event allows off-chain services to track the transfer of the token.
+                emitTransferSingle(caller(), from, to, id, amount)
             }
 
             /**

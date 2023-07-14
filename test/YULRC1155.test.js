@@ -295,4 +295,471 @@ describe("YULRC1155", function () {
         .withArgs(approver.address, operator.address, true);
     });
   });
+
+  /**
+   * safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)
+   *
+   * it:
+   * - should revert when transferring more than the balance
+   * - should revert when transferring to the zero address
+   * - should revert when the operator is not approved by multiTokenHolder
+   * - should revert when the receiver contract returns an unexpected value
+   * - should revert when the receiver contract reverts
+   * - should revert when the receiver does not implement the required function
+   * - should debit the transferred balance from the sender
+   * - should credit the transferred balance to the receiver
+   * - should preserve existing balances that are not transferred by multiTokenHolder
+   * - should succeed when the operator is approved by multiTokenHolder
+   * - should preserve the operator's balances not involved in the transfer
+   * - should succeed when calling onERC1155Received without data
+   * - should succeed when calling onERC1155Received with data
+   * - should emit a TransferSingle log
+   */
+  describe("safeTransferFrom", function () {
+    const tokenId = 1990;
+    const mintAmount = 9001;
+
+    it("should revert when transferring more than the balance", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenHolder)
+          .safeTransferFrom(
+            tokenHolder.address,
+            tokenReceiver.address,
+            tokenId,
+            mintAmount + 1,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should revert when transferring to the zero address", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenHolder)
+          .safeTransferFrom(
+            tokenHolder.address,
+            ZERO_ADDRESS,
+            tokenId,
+            mintAmount,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should revert when the operator is not approved by multiTokenHolder", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenReceiver)
+          .safeTransferFrom(
+            tokenHolder.address,
+            tokenReceiver.address,
+            tokenId,
+            mintAmount,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should revert when the receiver contract returns an unexpected value", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { unexpectedValueContract } = await loadFixture(
+        deployUnexpectedValueFixture
+      );
+      const [_, tokenHolder] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenHolder)
+          .safeTransferFrom(
+            tokenHolder.address,
+            unexpectedValueContract.address,
+            tokenId,
+            mintAmount,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should revert when the receiver contract reverts", async function () {
+      // Setup: Use a receiver contract that reverts
+      // Attempt to transfer tokens to the receiver contract
+
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { receiverRevertsContract } = await loadFixture(
+        deployReceiverRevertsFixture
+      );
+      const [_, tokenHolder] = await ethers.getSigners();
+
+      // Attempt to transfer tokens to the receiver contract
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      // Verify that the transfer reverts
+      await expect(
+        yulrc1155Contract
+          .connect(tokenHolder)
+          .safeTransferFrom(
+            tokenHolder.address,
+            receiverRevertsContract.address,
+            tokenId,
+            mintAmount,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should revert when the receiver does not implement the required function", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { missingFunctionContract } = await loadFixture(
+        deployMissingFunctionFixture
+      );
+      const [_, tokenHolder] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      await expect(
+        yulrc1155Contract
+          .connect(tokenHolder)
+          .safeTransferFrom(
+            tokenHolder.address,
+            missingFunctionContract.address,
+            tokenId,
+            mintAmount,
+            DATA
+          )
+      ).to.be.reverted;
+    });
+
+    it("should debit the transferred balance from the sender", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      // Transfer 123 tokens to receiver
+      const safeTransferFromTx = await yulrc1155Contract
+        .connect(tokenHolder)
+        .safeTransferFrom(
+          tokenHolder.address,
+          tokenReceiver.address,
+          tokenId,
+          123,
+          DATA
+        );
+      await safeTransferFromTx.wait(1);
+
+      expect(
+        await yulrc1155Contract.balanceOf(tokenHolder.address, tokenId)
+      ).to.equal(mintAmount - 123);
+    });
+
+    it("should credit the transferred balance to the receiver", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      // Transfer 123 tokens to receiver
+      const safeTransferFromTx = await yulrc1155Contract
+        .connect(tokenHolder)
+        .safeTransferFrom(
+          tokenHolder.address,
+          tokenReceiver.address,
+          tokenId,
+          123,
+          DATA
+        );
+      await safeTransferFromTx.wait(1);
+
+      expect(
+        await yulrc1155Contract.balanceOf(tokenReceiver.address, tokenId)
+      ).to.equal(123);
+    });
+
+    it("should preserve existing balances that are not transferred by multiTokenHolder", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder, tokenReceiver] = await ethers.getSigners();
+      const tokenOneId = 123;
+      const tokenTwoId = 456;
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenHolder.address,
+        [tokenOneId, tokenTwoId],
+        [mintAmount, mintAmount],
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      const safeTransferFromTx = await yulrc1155Contract
+        .connect(tokenHolder)
+        .safeTransferFrom(
+          tokenHolder.address,
+          tokenReceiver.address,
+          tokenOneId,
+          mintAmount,
+          DATA
+        );
+      await safeTransferFromTx.wait(1);
+
+      expect(
+        await yulrc1155Contract.balanceOf(tokenHolder.address, tokenTwoId)
+      ).to.equal(mintAmount);
+    });
+
+    it("should succeed when the operator is approved by multiTokenHolder", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder, tokenOperator, tokenReceiver] =
+        await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      // Approve `tokenOperator` to transfer on behalf of `tokenHolder`
+      const setApprovalForAllTx = await yulrc1155Contract
+        .connect(tokenHolder)
+        .setApprovalForAll(tokenOperator.address, true);
+      await setApprovalForAllTx.wait(1);
+
+      const safeTransferFromTx = await yulrc1155Contract
+        .connect(tokenOperator)
+        .safeTransferFrom(
+          tokenHolder.address,
+          tokenReceiver.address,
+          tokenId,
+          mintAmount,
+          DATA
+        );
+      await safeTransferFromTx.wait(1);
+
+      expect(
+        await yulrc1155Contract.balanceOf(tokenHolder.address, tokenId)
+      ).to.equal(0);
+
+      expect(
+        await yulrc1155Contract.balanceOf(tokenReceiver.address, tokenId)
+      ).to.equal(mintAmount);
+    });
+
+    it("should preserve the operator's balances not involved in the transfer", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder, tokenOperator, tokenReceiver] =
+        await ethers.getSigners();
+
+      const mintToTokenHolderTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintToTokenHolderTx.wait(1);
+
+      const mintToOperatorTx = await yulrc1155Contract.mint(
+        tokenOperator.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintToOperatorTx.wait(1);
+
+      // Approve `tokenOperator` to transfer on behalf of `tokenHolder`
+      const setApprovalForAllTx = await yulrc1155Contract
+        .connect(tokenHolder)
+        .setApprovalForAll(tokenOperator.address, true);
+      await setApprovalForAllTx.wait(1);
+
+      const safeTransferFromTx = await yulrc1155Contract
+        .connect(tokenOperator)
+        .safeTransferFrom(
+          tokenHolder.address,
+          tokenReceiver.address,
+          tokenId,
+          mintAmount,
+          DATA
+        );
+      await safeTransferFromTx.wait(1);
+
+      expect(
+        await yulrc1155Contract.balanceOf(tokenHolder.address, tokenId)
+      ).to.equal(0);
+
+      expect(
+        await yulrc1155Contract.balanceOf(tokenReceiver.address, tokenId)
+      ).to.equal(mintAmount);
+
+      expect(
+        await yulrc1155Contract.balanceOf(tokenOperator.address, tokenId)
+      ).to.equal(mintAmount);
+    });
+
+    it("should succeed when calling onERC1155Received without data", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { erc1155ReceiverContract } = await loadFixture(
+        deployERC1155ReceiverFixture
+      );
+      const [_, tokenHolder] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      const safeTransferFromTx = await yulrc1155Contract
+        .connect(tokenHolder)
+        .safeTransferFrom(
+          tokenHolder.address,
+          erc1155ReceiverContract.address,
+          tokenId,
+          mintAmount,
+          "0x00"
+        );
+      await safeTransferFromTx.wait(1);
+
+      expect(
+        await yulrc1155Contract.balanceOf(
+          erc1155ReceiverContract.address,
+          tokenId
+        )
+      ).to.equal(mintAmount);
+    });
+
+    it("should succeed when calling onERC1155Received with data", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const { erc1155ReceiverContract } = await loadFixture(
+        deployERC1155ReceiverFixtureTwo
+      );
+      const [_, tokenHolder] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      const safeTransferFromTx = await yulrc1155Contract
+        .connect(tokenHolder)
+        .safeTransferFrom(
+          tokenHolder.address,
+          erc1155ReceiverContract.address,
+          tokenId,
+          mintAmount,
+          DATA
+        );
+      await safeTransferFromTx.wait(1);
+
+      expect(
+        await yulrc1155Contract.balanceOf(
+          erc1155ReceiverContract.address,
+          tokenId
+        )
+      ).to.equal(mintAmount);
+    });
+
+    it("should emit a TransferSingle log", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder, tokenReceiver] = await ethers.getSigners();
+
+      const mintToTokenHolderTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        tokenId,
+        mintAmount,
+        DATA
+      );
+      await mintToTokenHolderTx.wait(1);
+
+      await expect(
+        await yulrc1155Contract
+          .connect(tokenHolder)
+          .safeTransferFrom(
+            tokenHolder.address,
+            tokenReceiver.address,
+            tokenId,
+            mintAmount,
+            DATA
+          )
+      )
+        .to.emit(yulrc1155Contract, "TransferSingle")
+        .withArgs(
+          tokenHolder.address,
+          tokenHolder.address,
+          tokenReceiver.address,
+          tokenId,
+          mintAmount
+        );
+    });
+  });
 });
