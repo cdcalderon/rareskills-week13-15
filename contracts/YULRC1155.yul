@@ -215,7 +215,7 @@ object "YULRC1155" {
                 // and i is initialized to 1, so adding 2 aligns the loop with these offsets.
                 for { let i := 1 } lt(i, add(2, div(uriLength, 0x20))) { i := add(i, 1) }
                 {
-                    let dataSlot := add(sUriLengthSlot(), i) // This points to the location in storage where the current part of the URI string is stored.
+                    let dataSlot := add(sUriLengthSlot(), i)
                     let uriData := sload(dataSlot)
 
                     mstore(add(0x20, mul(i, 0x20)), uriData)
@@ -252,9 +252,6 @@ object "YULRC1155" {
              * @param mAccountsArrayLengthPointer A pointer to the length of the accounts array in memory.
              * @param mIdsArrayLengthPointer A pointer to the length of the ids array in memory.
              * @return mBalancesArrayLengthPointer A pointer to the balances array in memory.
-             * The function returns the balances of the given accounts for the corresponding token IDs. 
-             * The balances are returned as an array in memory. 
-             * The function returns a pointer to the start of this balances array (mBalancesArrayLengthPointer).
              */
 
             function balanceOfBatch(mAccountsArrayLengthPointer, mIdsArrayLengthPointer) -> mBalancesArrayLengthPointer {
@@ -274,7 +271,6 @@ object "YULRC1155" {
                 mStoreWordAndUpdateFreeMemoryPointer(mBalancesArrayLengthPointer_, accountsArrayLength)
 
                 // For each account, load its token id balance into balances array
-                // i is less than accountsArrayLength + 1
                 for { let i := 1 } lt(i, add(accountsArrayLength, 1)) { i := add(i, 1) }
                 {
                     // Get account and id at this index position
@@ -322,7 +318,7 @@ object "YULRC1155" {
              * @return isApproved Whether the operator is approved.
              */
             function isApprovedForAll(account, operator) -> isApproved {
-                 // Calculate the storage key for the operator approval.
+                // Calculate the storage key for the operator approval.
                 let sOperatorApprovalKey := sGenerateOperatorApprovalKey(account, operator)
 
                 // Load the approval from storage.
@@ -339,7 +335,7 @@ object "YULRC1155" {
              * @param amount The amount of the token to transfer.
              */
             function _transfer(from, to, id, amount) {
-                  // Check that the `to` address is not the zero address.
+                // Check that the `to` address is not the zero address.
                 // If the `to` address is the zero address, this function will revert the transaction.
                 requireNonZeroAddress(to)
 
@@ -421,7 +417,7 @@ object "YULRC1155" {
                 mAmountsArrayLengthPointer, 
                 data
             ) {
-                 // Load the lengths of the ids and amounts arrays from memory.
+                // Load the lengths of the ids and amounts arrays from memory.
                 let idsArrayLength := mload(mIdsArrayLengthPointer)
                 let amountsArrayLength := mload(mAmountsArrayLengthPointer)
 
@@ -475,7 +471,7 @@ object "YULRC1155" {
              * @param amount The amount of the token to mint.
              */
             function _mint(to, id, amount) {
-                 // Check that the `to` address is not the zero address.
+                // Check that the `to` address is not the zero address.
                 // If the `to` address is the zero address, this function will revert the transaction.
                 requireNonZeroAddress(to)
 
@@ -563,6 +559,22 @@ object "YULRC1155" {
              * @param amount The amount of the token to burn.
              */
             function _burn(from, id, amount) {
+                // Check that the `from` address is not the zero address.
+                // If the `from` address is the zero address, this function will revert the transaction.
+                requireNonZeroAddress(from)
+
+                // Calculate the storage key for the balance of the `from` account for the token.
+                let sAccountBalanceKey := sGenerateBalanceKey(from, id)
+                
+                // Load the balance of the `from` account for the token from storage.
+                let accountBalance := sload(sAccountBalanceKey)
+
+                // Check that the balance of the `from` account for the token is sufficient for the burn.
+                // If the balance is insufficient, this function will revert the transaction.
+                requireSufficientBalance(accountBalance, amount)
+
+                // Decrement the balance of the `from` account for the token by the amount of the burn.
+                sstore(sAccountBalanceKey, sub(accountBalance, amount))
             }
 
             /**
@@ -574,6 +586,13 @@ object "YULRC1155" {
              * @param amount The amount of the token to burn.
              */
             function burn(from, id, amount) {
+                // Burn the token from the `from` account.
+                // This function will revert the transaction if the burn is not valid.
+                _burn(from, id, amount)
+
+                // Emit a `TransferSingle` event.
+                // This event allows off-chain services to track the burn of the token.
+                emitTransferSingle(caller(), from, 0x00, id, amount)
             }
 
             /**
@@ -585,6 +604,35 @@ object "YULRC1155" {
              * @param mAmountsArrayLengthPointer A pointer to the length of the amounts array in memory.
              */
             function burnBatch(from, mIdsArrayLengthPointer, mAmountsArrayLengthPointer) {
+                // Load the lengths of the ids and amounts arrays from memory.
+                let idsArrayLength := mload(mIdsArrayLengthPointer)
+                let amountsArrayLength := mload(mAmountsArrayLengthPointer)
+
+                // Check that the lengths of the ids and amounts arrays are equal.
+                // If the lengths are not equal, this function will revert the transaction.
+                requireEqual(idsArrayLength, amountsArrayLength)
+
+                // For each token id, burn the corresponding amount from the `from` account.
+                for { let i := 1 } lt(i, add(idsArrayLength, 1)) { i := add(i, 1) }
+                {
+                    // Load the token id and amount from memory.
+                    let id := mload(add(mIdsArrayLengthPointer, mul(i, 0x20)))
+                    let amount := mload(add(mAmountsArrayLengthPointer, mul(i, 0x20)))
+
+                    // Burn the token from the `from` account.
+                    // This function will revert the transaction if the burn is not valid.
+                    _burn(from, id, amount)
+                }
+
+                // Emit a `TransferBatch` event.
+                // This event allows off-chain services to track the burn of the tokens.
+                emitTransferBatch(
+                    caller(), 
+                    from, 
+                    0x00, 
+                    mIdsArrayLengthPointer,
+                    mAmountsArrayLengthPointer 
+                )
             }
 
             /**
@@ -599,7 +647,60 @@ object "YULRC1155" {
              * @param data Additional data to pass to the `onERC1155Received` function.
              */
             function callOnERC1155Received(from, to, id, amount, data) {
-               
+                // Load the free memory pointer.
+                let mFreeMemoryPointer := mload(0x00)
+                let mInputPointer := mFreeMemoryPointer
+
+                // The function selector for the `onERC1155Received` function.
+                let onERC1155ReceivedSelector := shl(0xE0, 0xf23a6e61)
+
+                // The length of the `data` bytes.
+                let dataLength := mload(data)
+
+                // Store the function selector, `operator`, `from`, `id`, `value`, and `data` offset in memory.
+                mstore(mInputPointer, onERC1155ReceivedSelector)
+                mstore(add(mInputPointer, 0x04), caller())
+                mstore(add(mInputPointer, 0x24), from)
+                mstore(add(mInputPointer, 0x44), id)
+                mstore(add(mInputPointer, 0x64), amount)
+                mstore(add(mInputPointer, 0x84), 0xa0)
+
+                // Store the length of the `data` bytes in memory.
+                let dataLengthPointer := add(mInputPointer, 0xa4)
+                mstore(dataLengthPointer, add(1, div(dataLength, 0x20)))
+
+                // If `data` is not empty, store the `data` bytes in memory.
+                if dataLength {
+                    for { let i := 1 } lt(i, add(2, div(dataLength, 0x20))) { i := add(i, 1) }
+                    {
+                        let data_ := mload(add(data, mul(i, 0x20)))
+                        mstore(add(dataLengthPointer, mul(i, 0x20)), data_)
+                    }
+                }
+
+                // Call the `onERC1155Received` function on the `to` contract.
+                let success := call(
+                    gas(), // gas
+                    to, // contract address
+                    0, // wei to include
+                    mInputPointer, // input start
+                    add(0xc4, mul(dataLength, 0x20)), // input size
+                    mFreeMemoryPointer, // output start
+                    0x20 // output size
+                )
+
+                // If the call failed, revert the transaction.
+                if iszero(success) {
+                    revert(0, 0)
+                }
+
+                // Load the returned value from the call.
+                let response := mload(mFreeMemoryPointer)
+
+                // If the returned value is not the expected value, revert the transaction.
+                if iszero(eq(response, onERC1155ReceivedSelector)) {
+                    revert(0, 0)
+                }
             }
 
             /**
@@ -620,6 +721,89 @@ object "YULRC1155" {
                 mAmountsArrayLengthPointer, 
                 data
             ) {
+                // Load the free memory pointer.
+                let mFreeMemoryPointer := mload(0x00)
+
+                // The function selector for the `onERC1155BatchReceived` function.
+                let onERC1155BatchReceivedSelector := shl(0xE0, 0xbc197c81)
+
+                // The length of the ids array and the data bytes.
+                let idsArrayLength := mload(mIdsArrayLengthPointer)
+                let dataLength := mload(data)
+
+                // Store the function selector, `operator`, `from`, `ids` offset, `values` offset, and `data` offset in memory.
+                mstore(mFreeMemoryPointer, onERC1155BatchReceivedSelector)
+                // address `operator`
+                mstore(add(mFreeMemoryPointer, 0x04), caller())
+                // address `from`
+                mstore(add(mFreeMemoryPointer, 0x24), from)
+                // uint256[] `ids` offset
+                mstore(add(mFreeMemoryPointer, 0x44), 0xa0)
+                // uint256[] `values` offset
+                let valuesArrayOffset := add(add(0xa0, 0x20), mul(idsArrayLength, 0x20))
+                mstore(add(mFreeMemoryPointer, 0x64), valuesArrayOffset)
+                // bytes `data` offset
+                let dataArrayOffset := add(add(valuesArrayOffset, 0x20), mul(idsArrayLength, 0x20))
+                mstore(add(mFreeMemoryPointer, 0x84), dataArrayOffset)
+                // uint256[] `ids` length
+                let idsArrayLengthPointer := add(mFreeMemoryPointer, 0xa4)
+                mstore(idsArrayLengthPointer, idsArrayLength)
+                // uint256[] `ids` data
+                if idsArrayLength {
+                    for { let i := 1 } lt(i, add(idsArrayLength, 1)) { i := add(i, 1) }
+                    {
+                        let idData := mload(add(mIdsArrayLengthPointer, mul(i, 0x20)))
+                        mstore(add(mFreeMemoryPointer, add(0xa4, mul(i, 0x20))), idData)
+                    }
+                }
+                // uint256[] `values` length
+                let valuesLengthPointer := add(add(idsArrayLengthPointer, 0x20), mul(idsArrayLength, 0x20))
+                mstore(valuesLengthPointer, idsArrayLength)
+                // uint256[] `values` data
+                if idsArrayLength {
+                    for { let i := 1 } lt(i, add(idsArrayLength, 1)) { i := add(i, 1) }
+                    {
+                        let amountData := mload(add(mAmountsArrayLengthPointer, mul(i, 0x20)))
+                        mstore(add(valuesLengthPointer, mul(i, 0x20)), amountData)
+                    }
+                }
+                // bytes `data` length
+                let dataLengthPointer := add(add(valuesLengthPointer, mul(idsArrayLength, 0x20)), 0x20)
+                mstore(dataLengthPointer, add(1, div(dataLength, 0x20)))
+                // bytes `data` data
+                if dataLength {
+                    for { let i := 1 } lt(i, add(2, div(dataLength, 0x20))) { i := add(i, 1) }
+                    {
+                        let bytesData := mload(add(data, mul(i, 0x20)))
+                        mstore(add(dataLengthPointer, mul(i, 0x20)), bytesData)
+                    }
+                }
+
+                // Call `onERC1155BatchReceived` on `to` contract
+                let success := call(
+                    gas(), // gas
+                    to, // contract address
+                    0, // wei to include
+                    mFreeMemoryPointer, // input start
+                    add(
+                        // Static data and length of first two dynamic arrays
+                        add(0xa4, mul(2, add(0x20, mul(idsArrayLength, 0x20)))), 
+                        // Dynamic bytes array `data`
+                        add(0x40, mul(0x20, div(dataLength, 0x20)))
+                    ), // input size
+                    mFreeMemoryPointer, // output start
+                    0x20 // output size
+                )
+
+                if iszero(success) {
+                    revert(0, 0)
+                }
+
+                let response := mload(mFreeMemoryPointer)
+
+                if iszero(eq(response, onERC1155BatchReceivedSelector)) {
+                    revert(0, 0)
+                }
             }
 
             /**

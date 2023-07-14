@@ -201,6 +201,99 @@ describe("YULRC1155", function () {
   });
 
   /**
+   * balanceOfBatch(address[] accounts, uint256[] ids)
+   *
+   * it:
+   * - should revert when input arrays do not match up
+   * - should revert when one of the addresses is the zero address
+   * - should return zeros for each account with no tokens
+   * - should return the amounts owned by each account in the order passed
+   */
+  describe("balanceOfBatch", function () {
+    const tokenBatchIds = [2000, 2010, 2020];
+    const mintAmounts = [5000, 10000, 42195];
+
+    it("should revert when input arrays do not match up", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, signerOne, signerTwo, signerThree] = await ethers.getSigners();
+      const accounts = [
+        signerOne.address,
+        signerTwo.address,
+        signerThree.address,
+      ];
+
+      await expect(
+        yulrc1155Contract.balanceOfBatch(accounts.slice(1), tokenBatchIds)
+      ).to.be.reverted;
+
+      await expect(
+        yulrc1155Contract.balanceOfBatch(accounts, tokenBatchIds.slice(1))
+      ).to.be.reverted;
+    });
+
+    it("should revert when one of the addresses is the zero address", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, signerOne, signerTwo] = await ethers.getSigners();
+      const accounts = [signerOne.address, ZERO_ADDRESS, signerTwo.address];
+
+      await expect(yulrc1155Contract.balanceOfBatch(accounts, tokenBatchIds)).to
+        .be.reverted;
+    });
+
+    it("should return zeros for each account with no tokens", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, signerOne, signerTwo, signerThree] = await ethers.getSigners();
+      const accounts = [
+        signerOne.address,
+        signerTwo.address,
+        signerThree.address,
+      ];
+
+      const holderBatchBalances = await yulrc1155Contract.balanceOfBatch(
+        accounts,
+        tokenBatchIds
+      );
+
+      for (let i = 0; i < holderBatchBalances.length; i++) {
+        expect(holderBatchBalances[i]).to.equal(0);
+      }
+    });
+
+    it("should return the amounts owned by each account in the order passed", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, signerOne, signerTwo, signerThree] = await ethers.getSigners();
+      const accounts = [
+        signerOne.address,
+        signerTwo.address,
+        signerThree.address,
+      ];
+      const tokenId = 1;
+
+      // Mint tokens to each account
+      for (let i = 0; i < accounts.length; i++) {
+        const mintTx = await yulrc1155Contract.mint(
+          accounts[i],
+          tokenId,
+          mintAmounts[i],
+          DATA
+        );
+        await mintTx.wait(1);
+      }
+
+      // Confirm balanceOfBatch returns expected amounts
+      const balances = await yulrc1155Contract.balanceOfBatch(accounts, [
+        tokenId,
+        tokenId,
+        tokenId,
+      ]);
+
+      for (let i = 0; i < balances.length; i++) {
+        expect(balances[i]).to.equal(mintAmounts[i]);
+      }
+    });
+  });
+
+  /**
    * setApprovalForAll(address operator, bool approved)
    * isApprovedForAll(address account, address operator)
    *
@@ -1398,6 +1491,239 @@ describe("YULRC1155", function () {
           tokenBatchHolder.address,
           TEST_TOKEN_IDS,
           TEST_TOKEN_QUANTITIES
+        );
+    });
+  });
+
+  /**
+   * burn(address from, uint256 id, uint256 amount)
+   *
+   * Test cases:
+   * - it should throw an error if burning from zero address
+   * - it should throw an error when trying to burn non-existent tokens
+   * - it should throw an error when trying to burn more tokens than available
+   * - it should correctly adjust the account balance after minting and burning operations
+   * - it should emit a 'TransferSingle' event after successful burning operation
+   */
+  describe("burn", function () {
+    const TEST_TOKEN_ID = 1990;
+    const TEST_MINT_AMOUNT = 9001;
+    const TEST_BURN_AMOUNT = 3000;
+
+    it("should throw an error if burning from zero address", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+
+      await expect(
+        yulrc1155Contract.burn(ZERO_ADDRESS, TEST_TOKEN_ID, TEST_BURN_AMOUNT)
+      ).to.be.reverted;
+    });
+
+    it("should throw an error when trying to burn non-existent tokens", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder] = await ethers.getSigners();
+
+      await expect(
+        yulrc1155Contract.burn(
+          tokenHolder.address,
+          TEST_TOKEN_ID,
+          TEST_BURN_AMOUNT
+        )
+      ).to.be.reverted;
+    });
+
+    it("should throw an error when trying to burn more tokens than available", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        TEST_TOKEN_ID,
+        TEST_MINT_AMOUNT,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      await expect(
+        yulrc1155Contract.burn(
+          tokenHolder.address,
+          TEST_TOKEN_ID,
+          TEST_MINT_AMOUNT + 1
+        )
+      ).to.be.reverted;
+    });
+
+    it("should correctly adjust the account balance after minting and burning operations", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenHolder] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        TEST_TOKEN_ID,
+        TEST_MINT_AMOUNT,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      const burnTx = await yulrc1155Contract.burn(
+        tokenHolder.address,
+        TEST_TOKEN_ID,
+        TEST_BURN_AMOUNT
+      );
+      await burnTx.wait(1);
+
+      expect(
+        await yulrc1155Contract.balanceOf(tokenHolder.address, TEST_TOKEN_ID)
+      ).to.equal(TEST_MINT_AMOUNT - TEST_BURN_AMOUNT);
+    });
+
+    it("should emit a 'TransferSingle' event after successful burning operation", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [operator, tokenHolder] = await ethers.getSigners();
+
+      const mintTx = await yulrc1155Contract.mint(
+        tokenHolder.address,
+        TEST_TOKEN_ID,
+        TEST_MINT_AMOUNT,
+        DATA
+      );
+      await mintTx.wait(1);
+
+      await expect(
+        await yulrc1155Contract.burn(
+          tokenHolder.address,
+          TEST_TOKEN_ID,
+          TEST_BURN_AMOUNT
+        )
+      )
+        .to.emit(yulrc1155Contract, "TransferSingle")
+        .withArgs(
+          operator.address,
+          tokenHolder.address,
+          ZERO_ADDRESS,
+          TEST_TOKEN_ID,
+          TEST_BURN_AMOUNT
+        );
+    });
+  });
+
+  /**
+   * burnBatch(address from, uint256[] ids, uint256[] amounts)
+   *
+   * it:
+   * - reverts when burning the zero account's tokens
+   * - reverts if length of inputs do not match
+   * - reverts when burning a non-existent token id
+   * - accounts for both minting and burning
+   * - emits a TransferBatch event
+   */
+  describe("burnBatch", function () {
+    const TEST_BATCH_TOKEN_IDS = [2000, 2010, 2020];
+    const TEST_MINT_AMOUNTS = [5000, 10000, 42195];
+    const TEST_BURN_AMOUNTS = [5000, 9001, 195];
+
+    it("should throw an error if burning from zero address", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+
+      await expect(
+        yulrc1155Contract.burnBatch(
+          ZERO_ADDRESS,
+          TEST_BATCH_TOKEN_IDS,
+          TEST_BURN_AMOUNTS
+        )
+      ).to.be.reverted;
+    });
+
+    it("should throw an error if the lengths of token ID and amounts arrays don't match", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder] = await ethers.getSigners();
+
+      await expect(
+        yulrc1155Contract.burnBatch(
+          tokenBatchHolder.address,
+          TEST_BATCH_TOKEN_IDS,
+          TEST_BURN_AMOUNTS.slice(1)
+        )
+      ).to.be.reverted;
+
+      await expect(
+        yulrc1155Contract.burnBatch(
+          tokenBatchHolder.address,
+          TEST_BATCH_TOKEN_IDS.slice(1),
+          TEST_BURN_AMOUNTS
+        )
+      ).to.be.reverted;
+    });
+
+    it("should throw an error when trying to burn non-existent tokens", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder] = await ethers.getSigners();
+
+      await expect(
+        yulrc1155Contract.burnBatch(
+          tokenBatchHolder.address,
+          TEST_BATCH_TOKEN_IDS,
+          TEST_BURN_AMOUNTS
+        )
+      ).to.be.reverted;
+    });
+
+    it("should correctly adjust the account balance after minting and burning operations", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [_, tokenBatchHolder] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        TEST_BATCH_TOKEN_IDS,
+        TEST_MINT_AMOUNTS,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      const burnBatchTx = await yulrc1155Contract.burnBatch(
+        tokenBatchHolder.address,
+        TEST_BATCH_TOKEN_IDS,
+        TEST_BURN_AMOUNTS
+      );
+      await burnBatchTx.wait(1);
+
+      const holderBatchBalances = await yulrc1155Contract.balanceOfBatch(
+        new Array(TEST_BATCH_TOKEN_IDS.length).fill(tokenBatchHolder.address),
+        TEST_BATCH_TOKEN_IDS
+      );
+
+      for (let i = 0; i < holderBatchBalances.length; i++) {
+        expect(holderBatchBalances[i]).to.be.bignumber.equal(
+          TEST_MINT_AMOUNTS[i].sub(TEST_BURN_AMOUNTS[i])
+        );
+      }
+    });
+
+    it("should emit a 'TransferBatch' event after successful burning operation", async function () {
+      const { yulrc1155Contract } = await loadFixture(deployYULRC1155Fixture);
+      const [operator, tokenBatchHolder] = await ethers.getSigners();
+
+      const mintBatchTx = await yulrc1155Contract.mintBatch(
+        tokenBatchHolder.address,
+        TEST_BATCH_TOKEN_IDS,
+        TEST_MINT_AMOUNTS,
+        DATA
+      );
+      await mintBatchTx.wait(1);
+
+      await expect(
+        yulrc1155Contract.burnBatch(
+          tokenBatchHolder.address,
+          TEST_BATCH_TOKEN_IDS,
+          TEST_BURN_AMOUNTS
+        )
+      )
+        .to.emit(yulrc1155Contract, "TransferBatch")
+        .withArgs(
+          operator.address,
+          tokenBatchHolder.address,
+          ZERO_ADDRESS,
+          TEST_BATCH_TOKEN_IDS,
+          TEST_BURN_AMOUNTS
         );
     });
   });
